@@ -1,6 +1,20 @@
 clear
 close all
 
+% path
+vbmeg_toolbox_dir = '/home/honoka/vbmeg3_0_0_a_2';
+addpath_dir = {'func_show', 'func_tf_analysis', 'func_vbmeg', 'func_else', 'func_post_vbmeg', 'func_fmri'};
+% check if file exist
+vbmeg_init_dir_filename = fullfile(vbmeg_toolbox_dir, 'vbmeg.m');
+if exist(vbmeg_init_dir_filename, 'file')~=2
+    warning(['cannot find  :', vbmeg_init_dir_filename])
+end
+
+% change dir
+cd(vbmeg_toolbox_dir)
+vbmeg;
+
+
 %% step 1 : set parameter
 % make structure
 p = struct;
@@ -34,7 +48,7 @@ p.fmri_meta_flag    = false; % neurosynth setting
 % estimate source current
 p.Tperiod         = 100;         % time windows for calculating source current [ms]
 p.Next            = 50;          % time step for calculating source current [ms]
-p.time_noise      = [-3 -1.0];   % Period for baseline [s]
+p.time_noise      = [-3 -1.5];   % Period for baseline [s]
 p.prior_weight    = 0.0001;      % Relative influence of prior information (0-1)
 p.variance_reduce = [1];
 
@@ -83,7 +97,7 @@ p.save.current_dir            = fullfile(p.save.dir, 'current');
 
 % other dir & filename
 p.save.head_dir_filename      = fullfile(p.save.dir, 'head', [p.read.mri_filename, '.head.mat']);
-p.save.basis_dir_filename     = fullfile(p.save.dir, 'basis', [p.read.mri_filename, '.basis.mat']);
+p.save.basis_dir_filename     = fullfile(p.save.dir, 'basis', [p.save.dirname, '.basis.mat']);
 
 
 %% step 3 : add path & check file exist
@@ -138,8 +152,8 @@ brain_param.FS_right_curv_file      = fullfile(p.read.freesurfer_dir, 'bem', 'rh
 
 brain_param.FS_sphere_key = 'sphere.reg';
 
-brain_param.FS_left_sphere_file     = fullfile(p.read.freesurfer_dir, 'bem', ['lh.',brain_param.FS_sphere_key, '.asc']);
-brain_param.FS_right_sphere_file    = fullfile(p.read.freesurfer_dir, 'bem', ['rh.', brain_param.FS_sphere_key, '.asc']);
+brain_param.FS_left_sphere_file     = fullfile(p.read.freesurfer_dir, 'bem', ['lh.sphere.reg.asc']);
+brain_param.FS_right_sphere_file    = fullfile(p.read.freesurfer_dir, 'bem', ['rh.sphere.reg.asc']);
 
 brain_param.FS_left_label_file      = fullfile(p.read.freesurfer_dir, 'label', 'lh.cortex.label');
 brain_param.FS_right_label_file     = fullfile(p.read.freesurfer_dir, 'label', 'rh.cortex.label');
@@ -167,7 +181,7 @@ Vinfo     : Vertex dimension structure
 %}
 
 %% step 5 : save parameter
-p.save.param_dir_filename = fullfile(p.save.dir, 'param.mat');
+p.save.param_dir_filename = fullfile(p.save.dir, 'param.mat'); %%ここがおかしそう
 %'/media/honoka/HDD2/MATLAB/vbmeg_analysis/20250313_B93_Rindex_20250814_ear_ref_car_standard_brain/media/honoka/HDD2/MATLAB/vbmeg_analysis' 
 save(p.save.param_dir_filename, 'p')
 
@@ -204,6 +218,9 @@ if p.resamp_flag || p.car_flag % p.resamoleflag or p.car_flag = true
         channel_average = mean(eeg_data,1);
         eeg_data = eeg_data - repmat(channel_average,n_chan,1,1);
     end
+
+    save(p.save.eeg_dir_filename, 'eeg_data', "EEGinfo", 'Measurement')
+
 end
 
 %% step 8 : head model (.head.mat) & leadfield (.basis.mat)
@@ -243,10 +260,10 @@ basis = basis - repmat(mean(basis,2),1,size(basis,2)); % channel num回，行列
 vb_save(basis_param.basis_file, 'basis')
 
 %% step 9 : estimate variance & current (.bayes.mat, .basis.mat)
-for ` = p.variance_reduce
+for now_reduce = p.variance_reduce
     reduce_str = replace(num2str(now_reduce),'.','_'); % 0.5とかを0_5に変えてくれる
-    p.save.bayes_dir_filename = fullfile(p.save.bayes_dir,['reduce_', redice_str],[p.save.dirname,'.bayes.mat']);
-    p.save.current_dir_filename = fullfile(p.save.current_dir, ['reduce_', reduce_str], [p.save.dirname]);
+    p.save.bayes_dir_filename = fullfile(p.save.bayes_dir,['reduce_', reduce_str],[p.save.dirname,'.bayes.mat']);
+    p.save.current_dir_filename = fullfile(p.save.current_dir, ['reduce_', reduce_str], [p.save.dirname,'.curr.mat']);
     p.reduce = now_reduce;
 
     %% estimate current variance and source currents from EEG data
@@ -256,14 +273,14 @@ for ` = p.variance_reduce
     bayes_parm.brainfile = p.save.brain_dir_filename;
     bayes_parm.areafile = p.save.area_dir_filename;
     bayes_parm.actfile = p.save.act_dir_filename;
-    bayes_parm.megfile{1} = p.save.eeg_dir_filename; % tkit ver: {1,1}, API ver:
+    bayes_parm.megfile{1,1} = p.save.eeg_dir_filename; % tkit ver: {1,1}, API ver:
     bayes_parm.basisfile = p.save.basis_dir_filename;
-    bayes_parm.megfile_baseline = bayes_parmfile;
+    bayes_parm.megfile_baseline = bayes_parm.megfile;
 
     bayes_parm.spatial_smoother ='subj'; % 'std': Standard brain , 'subj': Individual brain
 
     bayes_parm.area_key = 'Cortex'; % current area
-    bayes_parm.act_key = 'Uniform'; % 'Prior for current variance' %'Uniform' or p.fmri_contrase_name or p.neurosynth_term
+    bayes_parm.act_key{1,1} = 'Uniform'; % 'Prior for current variance' %'Uniform' or p.fmri_contrase_name or p.neurosynth_term
     bayes_parm.prior_weight = p.prior_weight; % Relative influence of prior information (0-1)
 
     % Load time information
@@ -277,7 +294,7 @@ for ` = p.variance_reduce
     bayes_parm.twin_meg = [1, length(time_info.time)]; % time window for analysis (all time)
     bayes_parm.Tperiod = p.Tperiod; % 100[ms] % time windows for calculating source current
     bayes_parm.Tnext = p.Next; % 50[ms] % time step for calculating source current
-    
+
     % Set time window for baseline
     [~, from] = min(abs(time - time_noise(1)));
     [~, to] = min(abs(time - time_noise(2)));
@@ -285,12 +302,115 @@ for ` = p.variance_reduce
     bayes_parm.twin_baseline = [from, to];
 
     bayes_parm.patch_norm = ON; % patch area normalization is applied
-    bayes_param.reduce = p.reduce;
-    
+    bayes_parm.reduce = p.reduce;
 
+    % Set output file
+    bayes_parm.bayesfile = p.save.bayes_dir_filename;
+
+    % Set parameter for noise convarience estimation
+    bayes_parm = vb_set_noise_estimation_model(bayes_parm);
+
+    % Show figure and parameter
+    bayes_show_title = 'estimate current variance';
+    bayes_show_param = {
+        'prior weight', bayes_parm.prior_weight;
+        'act key', bayes_parm.act_key;
+        'analyzing time ( twin meg )', bayes_parm.twin_meg;
+        'length of time window (Tperiod)', bayes_parm.Tperiod;
+        'step of time window (Tnext)', bayes_parm.Tnext;
+        'beta (twin_noise, twin_baseline)', bayes_parm.twin_noise;
+        'patch_norm', bayes_parm.patch_norm;
+    };
+
+    figure();
+    ax = axes('Position',[0,0,1,1]);
+    ax.XAxis.Visible = 'off';
+    ax.YAxis.Visible = 'off';
+
+    num_param = size(bayes_show_param,1);
+    line_between = 1/(num_param +2);
+
+    text(0.01,1-line_between,['\bf ' bayes_show_title]);
+
+    for now_num = 1:num_param
+        now_y = 1-line_between*(now_num+1);
+        if isnumeric(bayes_show_param{now_num,2})
+            text(0.1,now_y, append(bayes_show_param{now_num,1}, ':', num2str(bayes_show_param{now_num,2})), 'interpreter', 'none');
+        else
+            text(0.1,now_y, [bayes_show_param{now_num,1}, ':', bayes_show_param{now_num,2}], 'interpreter', 'none');
+        end
+    end
+
+    vb_job_vb(bayes_parm) %  Estimate parameters of hierarchical Bayse model using variational Bayes
+    %↑ ここでEEG時系列データ使われてるかも
+
+    % Estimate source current
+    current_parm.megfile = bayes_parm.megfile;
+    current_parm.bayesfile = bayes_parm.bayesfile;
+    current_parm.trial_average = OFF;
+
+    data = vb_load_meg_data(p.save.eeg_dir_filename);
+    current_parm.twin_meg = [1 size(data, 2)];
+    current_parm.Tperiod = size(data, 2);
+
+    current_parm.currfile = p.save.current_dir_filename;
+    if p.curr_trial_save_flag
+        current_parm.jactdir = 'EachTrial';
+    end
+
+    vb_job_current(current_parm);
 
 end
 
 %% step 10 : save each trial vertex current
-
+area_filename = [p.read.mri_filename, '_HCP_MMP1.area.mat'];
+% p.save.area_dir_filename      = fullfile(p.save.dir, 'brain', [p.read.mri_filename, '.area.mat']);
 choose_key = {'R_3b_ROI', 'L_3b_ROI', 'R_4_ROI', 'L_4_ROI'};
+
+    %% area file & act file
+    disp('decide ROI vertex')
+    ROI_vertex_num = [];
+    area_file_path = fullfile(p.save.dir, 'brain', area_filename);
+    % area_dir_filename = fullfile(p.save.dir, 'brain', area_filename);
+    key_list = vb_get_keyset_area(p.save.area_dir_filename); % This function is used to get the set of cortical area IDs. 
+
+    if ~exist(area_file_path, 'file')
+        warning('HCP_MMP1 area file is not found!!!!!!!')
+    end
+
+    for now_num = 1:length(choose_key)
+        now_key = choose_key{1,now_num};
+        area = vb_get_area(area_file_path, now_key); % This function is used to get cortical area data. 
+        ROI_vertex_num = [ROI_vertex_num; area.Iextract];
+    end
+
+    %% load current
+    curr_type = 1;
+    ave_mode = OFF;
+    reduce = p.variance_reduce;
+    reduce_str = replace(num2str(reduce), '.', '_');
+    curr_dir_filename = fullfile(p.save.current_dir, ['reduce_', reduce_str],[p.save.dirname, '.curr.mat']);
+
+    disp('load current now ...')
+    % [Jinfo, Zacts,ix_act] = vb_load_current(curr_dir_filename, curr_type, average_mode, [], ROI_vertex_num); %load estimated current
+    [Jinfo, Zacts,ix_act] = vb_load_current(curr_dir_filename, curr_type, ave_mode, [], ROI_vertex_num);
+
+    if ~isequal(ix_act, ROI_vertex_num) || (length(ROI_vertex_num)~=size(Zacts,1))
+        error('check');
+    end
+
+    disp('save current now ...')
+    save_dir = fullfile(p.save.current_dir, ['reduce_', reduce_str], 'EachVertex');
+
+    if ~exist(save_dir, 'dir')
+        mkdir(save_dir);
+    end
+
+    save_dir_filename = fullfile(save_dir, 'Z_current_%d.mat');
+
+    for now_num = 1:length(ROI_vertex_num)
+        vertex_num = ROI_vertex_num(now_num);
+        Zact = Zacts(now_num,:,:);
+        now_save_dir_filename = sprintf(save_dir_filename, vertex_num);
+        save(now_save_dir_filename, "Zact", 'Jinfo', 'vertex_num');
+    end
